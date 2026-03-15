@@ -7,6 +7,6 @@
 #define TYPE_QNAP_IT8528           "qnap-it8528"
 
 void qnap_it8528_hmp_info(Monitor *mon, const QDict *qdict);
-void qnap_it8528_hmp_press(Monitor *mon, QDict *qdict)
+void qnap_it8528_hmp_press(Monitor *mon, QDict *qdict);
 
 #endif 

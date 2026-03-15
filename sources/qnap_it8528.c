@@ -16,10 +16,11 @@
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "hw/isa/isa.h"
-#include "hw/qdev-properties.h"
+#include "hw/qdev-core.h"            /* DeviceState, DeviceClass */
+#include "hw/core/qdev-properties.h"      /* may still exist as a stub */
 #include "qom/object.h"
 #include "monitor/monitor.h"
-#include "qapi/qmp/qdict.h"
+#include "qobject/qdict.h"
 #include "qnap_it8528.h"
 
 #define QNAP_IT8528_LOG_TAG        "QNAP-IT8528:"
