@@ -354,7 +354,7 @@ static void qnap_it8528_button_timer_cb(void *opaque) {
     s->buttons = 0;
 }
 
-void qnap_it8528_hmp_press(Monitor *mon, QDict *qdict)
+void qnap_it8528_hmp_press(Monitor *mon, const QDict *qdict)
 {
     const char *button = qdict_get_str(qdict, "button");
     int duration = qdict_get_int(qdict, "duration");
@@ -482,7 +482,7 @@ static bool it8528_fan_to_regs(unsigned int fan, uint16_t *rh, uint16_t *rl)
     return false;
 }
 
-void qnap_it8528_hmp_info(Monitor *mon, QDict *qdict) {
+void qnap_it8528_hmp_info(Monitor *mon, const QDict *qdict) {
     static const char *phase_names[] = {"IDLE", "CMD_HIGH", "CMD_LOW", "WRITE_DATA"};
     QNAPIT8528State *s = qnap_it8528_global;
     int i;
