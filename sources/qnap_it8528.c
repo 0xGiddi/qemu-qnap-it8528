@@ -422,7 +422,6 @@ static Property qnap_it8528_properties[] = {
     DEFINE_PROP_STRING("vpd-file", QNAPIT8528State, vpd_path),
     DEFINE_PROP_STRING("regs-file", QNAPIT8528State, regs_path),
     DEFINE_PROP_UINT16("chip-id", QNAPIT8528State, sio_chip_id, QNAP_IT8528_DEFAULT_CHIP_ID),
-    DEFINE_PROP_END_OF_LIST()
 };
 
 static void qnap_it8528_class_init(ObjectClass *oc, const void *data) {
