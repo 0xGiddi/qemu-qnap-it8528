@@ -10,6 +10,17 @@
  *  v1.0 - Initial version
  */
 
+#include "qemu/osdep.h"
+#include "qemu/log.h"
+#include "qemu/timer.h"
+#include "qemu/error-report.h"
+#include "qapi/error.h"
+#include "hw/isa/isa.h"
+#include "hw/qdev-properties.h"
+#include "qom/object.h"
+#include "monitor/monitor.h"
+#include "qapi/qmp/qdict.h"
+#include "qnap_it8528.h"
 
 #define QNAP_IT8528_LOG_TAG        "QNAP-IT8528:"
 #define QNAP_IT8528_LOG(fmt, ...) \
@@ -21,7 +32,7 @@
 #define QNAP_IT8528_WARN(fmt, ...) \
     do { warn_report(QNAP_IT8528_LOG_TAG " " fmt, ##__VA_ARGS__); } while (0)
 
-#define TYPE_QNAP_IT8528           "qnap-it8528"
+
 
 #define QNAP_IT8528_DEFAULT_CHIP_ID 0x8528
 #define QNAP_IT8528_SIO_INDEX_PORT  0x2e
@@ -63,6 +74,11 @@ struct QNAPIT8528State {
     uint8_t vpd_tables[QNAP_IT8528_VPD_NUM_TABLES][QNAP_IT8528_VPD_TABLE_SIZE];
     uint16_t vpd_offsets[QNAP_IT8528_VPD_NUM_TABLES];
 
+    uint32_t led_disk_present; // Static green
+    uint32_t led_disk_active;  // Blinking Green
+    uint32_t led_disk_error;   // Static Red
+    uint32_t led_disk_locate;  // Blinking Red(ish)
+
     char *regs_path;
     char *vpd_path;
 
@@ -97,7 +113,7 @@ static int qnap_it8528_vpd_reg_lookup(uint16_t reg, int *position) {
 static uint8_t qnap_it8528_read_register(QNAPIT8528State *s, uint16_t reg) {
     int vpd_table, vpd_reg_pos;
     if (reg >= QNAP_IT8528_REG_FILE_SIZE) {
-        QNAP_IT8528_WARN("Read from out of range reg 0x%04x")
+        QNAP_IT8528_WARN("Read from out of range reg 0x%04x", reg)
         return 0;
     }
 
@@ -117,7 +133,7 @@ static void qnap_it8528_write_register(QNAPIT8528State *s, uint16_t reg, uint8_t
     int vpd_table, vpd_reg_pos;
 
      if (reg >= QNAP_IT8528_REG_FILE_SIZE) {
-        QNAP_IT8528_WARN("Write from out of range reg 0x%04x")
+        QNAP_IT8528_WARN("Write from out of range reg 0x%04x", reg)
         return;
     }
 
@@ -138,6 +154,20 @@ static void qnap_it8528_write_register(QNAPIT8528State *s, uint16_t reg, uint8_t
         }
     }
     s->regs[reg] = val;
+
+    // Update disk LEDs to keep track
+    if (val < 32) {
+        switch (reg) {
+        case 0x15a: s->led_disk_present |=  BIT(val); break;
+        case 0x15b: s->led_disk_present &= ~BIT(val); break;
+        case 0x15c: s->led_disk_error   |=  BIT(val); break;
+        case 0x15d: s->led_disk_error   &= ~BIT(val); break;
+        case 0x158: s->led_disk_locate  |=  BIT(val); break;
+        case 0x159: s->led_disk_locate  &= ~BIT(val); break;
+        case 0x15f: s->led_disk_active  |=  BIT(val); break;
+        case 0x157: s->led_disk_active  &= ~BIT(val); break;
+        }
+    }
 }
 
 static void qnap_it8528_process_cmd(QNAPIT8528State *s) {
@@ -324,6 +354,25 @@ static void qnap_it8528_button_timer_cb(void *opaque) {
     s->buttons = 0;
 }
 
+void qnap_it8528_hmp_press(Monitor *mon, QDict *qdict)
+{
+    const char *button = qdict_get_str(qdict, "button");
+    int duration = qdict_get_int(qdict, "duration");
+    uint8_t mask = 0;
+
+    if (!qnap_it8528_global) {
+        monitor_printf(mon, "QNAP IT8528 device not present\n");
+        return;
+    }
+
+    if (!strcasecmp(button, "CHASSIS")) mask = BIT(0);
+    else if (!strcasecmp(button, "COPY")) mask = BIT(1);
+    else if (!strcasecmp(button, "RESET")) mask = BIT(2);
+    else { monitor_printf(mon, "Unknown button '%s'\n", button); return; }
+
+    qnap_it8528_press_button(qnap_it8528_global, mask, duration);
+}
+
 static void qnap_it8528_realize(DeviceState *ds, Error **errp) {
     ISADevice *isa = ISA_DEVICE(ds);
     QNAPIT8528State *s = QNAPIT8528(ds);
@@ -344,7 +393,11 @@ static void qnap_it8528_realize(DeviceState *ds, Error **errp) {
     s->phase = EC_PHASE_IDLE;
     s->status = 0;
     s->output = 0;
-    
+    s->led_disk_present = 0;
+    s->led_disk_active = 0;
+    s->led_disk_error = 0;
+    s->led_disk_locate = 0;
+    s->buttons = 0;
     s->button_timer = timer_new_ms(QEMU_CLOCK_VIRTUAL, qnap_it8528_button_timer_cb, s);
 
     qnap_it8528_global = s;
@@ -393,18 +446,97 @@ static void qnap_it8528_register_types(void) {
 }
 type_init(qnap_it8528_register_types)
 
+static uint16_t it8528_temp_sensor_to_reg(unsigned int sensor)
+{
+    if (sensor <= 1)                        return 0x600 + sensor;
+    if (sensor >= 5 && sensor <= 7)         return 0x5fd + sensor;
+    if (sensor == 0x0a)                     return 0x659;
+    if (sensor == 0x0b)                     return 0x65c;
+    if (sensor >= 0x0f && sensor <= 0x26)   return 0x5f7 + sensor;
+    return 0;
+}
 
+static bool it8528_fan_to_regs(unsigned int fan, uint16_t *rh, uint16_t *rl)
+{
+    if (fan <= 5) {
+        *rh = (fan + 0x312) * 2;
+        *rl = (fan * 2) + 0x625;
+        return true;
+    }
+    if (fan == 6 || fan == 7) {
+        *rh = (fan + 0x30a) * 2;
+        *rl = ((fan - 6) * 2) + 0x621;
+        return true;
+    }
+    if (fan == 0x0a) { *rh = 0x65b; *rl = 0x65a; return true; }
+    if (fan == 0x0b) { *rh = 0x65e; *rl = 0x65d; return true; }
+    if (fan >= 0x14 && fan <= 0x19) {
+        *rh = (fan + 0x30e) * 2;
+        *rl = ((fan - 0x14) * 2) + 0x645;
+        return true;
+    }
+    if (fan >= 0x1e && fan <= 0x23) {
+        *rh = (fan + 0x2f8) * 2;
+        *rl = ((fan - 0x1e) * 2) + 0x62d;
+        return true;
+    }
+    return false;
+}
 
+void qnap_it8528_hmp_info(Monitor *mon, QDict *qdict) {
+    static const char *phase_names[] = {"IDLE", "CMD_HIGH", "CMD_LOW", "WRITE_DATA"};
+    QNAPIT8528State *s = qnap_it8528_global;
+    int i;
+    uint16_t reg;
 
+    if (!s) {
+        monitor_printf(mon, "QNAP IT8528 device not present\n");
+        return;
+    }
 
-
-
-
-
-
-
-
-
-
-
-
+    monitor_printf(mon, "QNAP IT8528 QNAP EC Info\n");
+    monitor_printf(mon, "Firmware: ");
+    for (i = 0; i < 8; i++)
+        monitor_printf(mon, "%c", s->regs[0x308 + i]);
+    monitor_printf(mon, "\n");
+    monitor_printf(mon, "CPLD version: 0x%02x\n",s->regs[0x320]);
+    monitor_printf(mon, "EC phase: %s, status=0x%02x (OBF=%d IBF=%d)\n", phase_names[s->phase], s->status, !!(s->status & BIT(0)), !!(s->status & BIT(1)));
+    monitor_printf(mon, "Power recovery: %d, EuP mode: 0x%02x\n", s->regs[0x16], s->regs[0x121]);
+    monitor_printf(mon, "System LEDs: status=%d usb=%d ident=%d jbod=%d 10g=%d\n", s->regs[0x155], s->regs[0x154], s->regs[0x15e], s->regs[0x156], s->regs[0x167]);
+    monitor_printf(mon, "Disk LEDs (active):\n");
+    for (i = 0; i < 32; i++) {
+        uint32_t bit = BIT(i);
+        bool present = !!(s->led_disk_present & bit);
+        bool error   = !!(s->led_disk_error   & bit);
+        bool locate  = !!(s->led_disk_locate  & bit);
+        bool active  = !!(s->led_disk_active  & bit);
+        if (present | error | locate | active)
+            monitor_printf(mon, "    ec index %2d: present=%d error=%d locate=%d active=%d\n", i, present, error, locate, active);
+    }
+    monitor_printf(mon, "Buttons (regs): chassis=%d copy=%d reset=%d\n", !!(s->regs[0x143] & BIT(0)), !!(s->regs[0x143] & BIT(1)), !!(s->regs[0x143] & BIT(2)));
+    monitor_printf(mon, "Buttons (pressed): chassis=%d copy=%d reset=%d\n", !!(s->buttons & BIT(0)), !!(s->buttons & BIT(1)), !!(s->buttons & BIT(2)));
+    monitor_printf(mon, "Temperature sensors (value > 0):\n");
+    for (i = 0; i <= 0x26; i++) {
+        reg = it8528_temp_sensor_to_reg(i);
+        if (reg && reg < QNAP_IT8528_REG_FILE_SIZE) {
+            if (s->regs[reg] > 0)
+                monitor_printf(mon, "    sensor %2d (reg 0x%04x): %d°C\n", i, reg, s->regs[reg]);
+        }
+    }
+    monitor_printf(mon, "Fan RPMs:\n");
+    for (i = 0; i <= 0x23; i++) {
+        uint16_t rh, rl;
+        if (it8528_fan_to_regs(i, &rh, &rl) &&
+            rh < QNAP_IT8528_REG_FILE_SIZE && rl < QNAP_IT8528_REG_FILE_SIZE) {
+            uint16_t rpm = ((uint16_t)s->regs[rh] << 8) | s->regs[rl];
+            if (rpm > 0) {
+                monitor_printf(mon, "fan %2d (regs 0x%04x/0x%04x): ""%d RPM\n", i, rh, rl, rpm);
+            }
+        }
+    }
+    monitor_printf(mon, "Fan banks PWMs:\n");
+    monitor_printf(mon, "    bank 0 (fans 0-5):   mode=0x%02x  pwm=%u%%\n", s->regs[0x220], s->regs[0x22e]);
+    monitor_printf(mon, "    bank 1 (fans 6-7):   mode=0x%02x  pwm=%u%%\n", s->regs[0x223], s->regs[0x24b]);
+    monitor_printf(mon, "    bank 2 (fans 20-25): mode=0x%02x  pwm=%u%%\n", s->regs[0x221], s->regs[0x22f]);
+    monitor_printf(mon, "    bank 3 (fans 30-35): mode=0x%02x  pwm=%u%%\n", s->regs[0x222], s->regs[0x23b]);
+}
