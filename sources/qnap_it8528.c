@@ -218,7 +218,7 @@ static void qnap_it8528_cmd_write(void *opaque, hwaddr addr, uint64_t val, unsig
         s->phase = EC_PHASE_CMD_HIGH;
         s->status &= ~BIT(1);
     } else
-        QNAP_IT8528_ERROR("Unexpected command 0x%04x (expected 0x88)", (val & 0xff));
+        QNAP_IT8528_ERROR("Unexpected command 0x%04x (expected 0x88)",(unsigned int)(val & 0xff));
 }
 
 static uint64_t qnap_it8528_data_read(void *opaque, hwaddr addr, unsigned size) {
@@ -418,7 +418,7 @@ static void qnap_it8528_unrealize(DeviceState *ds) {
         qnap_it8528_global = NULL;
 }
 
-static Property qnap_it8528_properties[] = {
+static const Property qnap_it8528_properties[] = {
     DEFINE_PROP_STRING("vpd-file", QNAPIT8528State, vpd_path),
     DEFINE_PROP_STRING("regs-file", QNAPIT8528State, regs_path),
     DEFINE_PROP_UINT16("chip-id", QNAPIT8528State, sio_chip_id, QNAP_IT8528_DEFAULT_CHIP_ID),
