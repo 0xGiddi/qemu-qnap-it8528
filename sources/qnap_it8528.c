@@ -436,7 +436,7 @@ static void qnap_it8528_class_init(ObjectClass *oc, void *data) {
 }
 
 static const TypeInfo qnap_it8528_type_info = {
-    .name = TYPE_QNAP_IT8528,
+    .name = TYPE_QNAPIT8528,
     .parent = TYPE_ISA_DEVICE,
     .instance_size = sizeof(QNAPIT8528State),
     .class_init = qnap_it8528_class_init
