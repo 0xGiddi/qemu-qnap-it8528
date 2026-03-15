@@ -16,8 +16,7 @@
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "hw/isa/isa.h"
-#include "hw/qdev-core.h"            /* DeviceState, DeviceClass */
-#include "hw/core/qdev-properties.h"      /* may still exist as a stub */
+#include "hw/core/qdev-properties.h"   
 #include "qom/object.h"
 #include "monitor/monitor.h"
 #include "qobject/qdict.h"
@@ -50,14 +49,14 @@
 #define QNAP_IT8528_VPD_NUM_TABLES  4
 #define QNAP_IT8528_VPD_TABLE_SIZE  512
 
-enum QNAPIT8528ECPhase {
+typedef enum {
     EC_PHASE_IDLE,
     EC_PHASE_CMD_HIGH,
     EC_PHASE_CMD_LOW,
     EC_PHASE_WRITE_DATA
-};
+} QNAPIT8528ECPhase;
 
-OBJECT_DECLARE_SIMPLE_TYPE(IT8528State, QNAPIT8528)
+OBJECT_DECLARE_SIMPLE_TYPE(QNAPIT8528State, QNAPIT8528)
 struct QNAPIT8528State {
     ISADevice *parent_obj;
 
@@ -114,14 +113,14 @@ static int qnap_it8528_vpd_reg_lookup(uint16_t reg, int *position) {
 static uint8_t qnap_it8528_read_register(QNAPIT8528State *s, uint16_t reg) {
     int vpd_table, vpd_reg_pos;
     if (reg >= QNAP_IT8528_REG_FILE_SIZE) {
-        QNAP_IT8528_WARN("Read from out of range reg 0x%04x", reg)
+        QNAP_IT8528_WARN("Read from out of range reg 0x%04x", reg);
         return 0;
     }
 
     vpd_table = qnap_it8528_vpd_reg_lookup(reg, &vpd_reg_pos);
     if (vpd_table >= 0 && vpd_reg_pos == 2) {
         if (s->vpd_offsets[vpd_table] >= QNAP_IT8528_VPD_TABLE_SIZE) {
-            QNAP_IT8528_WARN("VPD read from out of range offset table=%d offs=0x%04x", vpd_table, s->vpd_offsets[vpd_table]);
+            QNAP_IT8528_WARN("VPD read from out of range offset table=%d offs=0x%04x", vpd_table, s->vpd_offsets[vpd_table]);;
             return 0;
         }
         return s->vpd_tables[vpd_table][s->vpd_offsets[vpd_table]];
@@ -134,11 +133,11 @@ static void qnap_it8528_write_register(QNAPIT8528State *s, uint16_t reg, uint8_t
     int vpd_table, vpd_reg_pos;
 
      if (reg >= QNAP_IT8528_REG_FILE_SIZE) {
-        QNAP_IT8528_WARN("Write from out of range reg 0x%04x", reg)
+        QNAP_IT8528_WARN("Write from out of range reg 0x%04x", reg);
         return;
     }
 
-    QNAP_IT8528_LOG("Write reg=0x%04x val=%02x", reg, val)
+    QNAP_IT8528_LOG("Write reg=0x%04x val=%02x", reg, val);
 
     vpd_table = qnap_it8528_vpd_reg_lookup(reg, &vpd_reg_pos);
     if (vpd_table >= 0) {
@@ -150,7 +149,7 @@ static void qnap_it8528_write_register(QNAPIT8528State *s, uint16_t reg, uint8_t
                 s->vpd_offsets[vpd_table] = s->vpd_offsets[vpd_table] | val;
                 break;
             case 2:
-                QNAP_IT8528_LOG("Unexpected write to VPD table=%d, offs=%04x",vpd_table, s->vpd_offsets[vpd_table])
+                QNAP_IT8528_LOG("Unexpected write to VPD table=%d, offs=%04x",vpd_table, s->vpd_offsets[vpd_table]);
                 break;
         }
     }
@@ -219,7 +218,7 @@ static void qnap_it8528_cmd_write(void *opaque, hwaddr addr, uint64_t val, unsig
         s->phase = EC_PHASE_CMD_HIGH;
         s->status &= ~BIT(1);
     } else
-        QNAP_IT8528_ERROR("Unexpected command 0x%04x (expected 0x88)", (val & 0xff))
+        QNAP_IT8528_ERROR("Unexpected command 0x%04x (expected 0x88)", (val & 0xff));
 }
 
 static uint64_t qnap_it8528_data_read(void *opaque, hwaddr addr, unsigned size) {
@@ -237,7 +236,7 @@ static void qnap_it8528_data_write(void *opaque, hwaddr addr, uint64_t val, unsi
 
     switch (s->phase) {
         case EC_PHASE_IDLE:
-            QNAP_IT8528_ERROR("Unexpected data write in EC idle phase")
+            QNAP_IT8528_ERROR("Unexpected data write in EC idle phase");
             break;
         case EC_PHASE_CMD_HIGH:
             s->cmd = (val & 0xff) << 8;
@@ -294,20 +293,20 @@ static void qnap_it8528_init_registers(QNAPIT8528State *s) {
     memset(s->regs, 0, QNAP_IT8528_REG_FILE_SIZE);
     
     if (!s->regs_path || !s->regs_path[0]) {
-        QNAP_IT8528_WARN("No regs file, regs will be all zero")
+        QNAP_IT8528_WARN("No regs file, regs will be all zero");
         return;
     }
 
     f = fopen(s->regs_path, "rb");
     if (!f) {
-        QNAP_IT8528_ERROR("Failed to open regs file '%s' (%s)", s->regs_path, strerror(errno))
+        QNAP_IT8528_ERROR("Failed to open regs file '%s' (%s)", s->regs_path, strerror(errno));
         return;
     }
 
     n = fread(s->regs, 1, QNAP_IT8528_REG_FILE_SIZE, f);
     fclose(f);
     if (n < QNAP_IT8528_REG_FILE_SIZE)
-        QNAP_IT8528_WARN("Regs file '%s' is truncated/empty, padded with zeros", s->regs_path)
+        QNAP_IT8528_WARN("Regs file '%s' is truncated/empty, padded with zeros", s->regs_path);
 }
 
 static void qnap_it8528_init_vpd(QNAPIT8528State *s) {
@@ -318,20 +317,20 @@ static void qnap_it8528_init_vpd(QNAPIT8528State *s) {
     
     if (!s->vpd_path || !s->vpd_path[0])
     {
-        QNAP_IT8528_WARN("No VPD file, VPD will be all zero")
+        QNAP_IT8528_WARN("No VPD file, VPD will be all zero");
         return;
     }
 
     f = fopen(s->vpd_path, "rb");
     if (!f) {
-        QNAP_IT8528_ERROR("Failed to open VPD file '%s' (%s)", s->vpd_path, strerror(errno))
+        QNAP_IT8528_ERROR("Failed to open VPD file '%s' (%s)", s->vpd_path, strerror(errno));
         return;
     }
 
     n = fread(s->vpd_tables, 1, QNAP_IT8528_VPD_NUM_TABLES * QNAP_IT8528_VPD_TABLE_SIZE, f);
     fclose(f);
     if (n < (QNAP_IT8528_VPD_NUM_TABLES * QNAP_IT8528_VPD_TABLE_SIZE))
-        QNAP_IT8528_WARN("VPD file '%s' is truncated/empty, padded with zeros", s->vpd_path)
+        QNAP_IT8528_WARN("VPD file '%s' is truncated/empty, padded with zeros", s->vpd_path);
 }
 
 static void qnap_it8528_press_button(QNAPIT8528State *s, uint8_t mask, int duration) {
@@ -346,11 +345,11 @@ static void qnap_it8528_button_timer_cb(void *opaque) {
     s->regs[0x143] &= ~s->buttons;
 
     if (s->buttons & BIT(0))
-        QNAP_IT8528_LOG("Released CHASSIS button")
+        QNAP_IT8528_LOG("Released CHASSIS button");
     if (s->buttons & BIT(1))
-        QNAP_IT8528_LOG("Released COPY button")
+        QNAP_IT8528_LOG("Released COPY button");
     if (s->buttons & BIT(2))
-        QNAP_IT8528_LOG("Released RESET button")
+        QNAP_IT8528_LOG("Released RESET button");
 
     s->buttons = 0;
 }
@@ -403,8 +402,8 @@ static void qnap_it8528_realize(DeviceState *ds, Error **errp) {
 
     qnap_it8528_global = s;
 
-    QNAP_IT8528_LOG("QNAP EC emulation device realized")
-    QNAP_IT8528_LOG("SuperIO Chip ID = %04x", s->sio_chip_id)
+    QNAP_IT8528_LOG("QNAP EC emulation device realized");
+    QNAP_IT8528_LOG("SuperIO Chip ID = %04x", s->sio_chip_id);
 }
 
 static void qnap_it8528_unrealize(DeviceState *ds) {
@@ -426,7 +425,7 @@ static Property qnap_it8528_properties[] = {
     DEFINE_PROP_END_OF_LIST()
 };
 
-static void qnap_it8528_class_init(ObjectClass *oc, void *data) {
+static void qnap_it8528_class_init(ObjectClass *oc, const void *data) {
     DeviceClass *dc = DEVICE_CLASS(oc);
     dc->realize = qnap_it8528_realize;
     dc->unrealize = qnap_it8528_unrealize;
