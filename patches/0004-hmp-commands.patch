@@ -1,0 +1,36 @@
+--- a/hmp-commands.hx
++++ b/hmp-commands.hx
+@@ -1859,3 +1859,33 @@ SRST
+   List event channels in the guest
+ ERST
+ #endif
++
++{
++        .name       = "qnap_it8528_info",
++        .args_type  = "",
++        .params     = "",
++        .help       = "Show QNAP IT8528 EC status (fans, temps, LEDs, buttons, disks)",
++        .cmd        = qnap_it8528_hmp_info,
++    },
++
++SRST
++``qnap_it8528_info``
++  Show QNAP IT8528 embedded controller status including fan RPMs, temperatures,
++  LED states, button states and disk LED states.
++ERST
++
++    {
++        .name       = "qnap_it8528_press",
++        .args_type  = "button:s,duration:i",
++        .params     = "button duration",
++        .help       = "Simulate button press on QNAP IT8528 (CHASSIS|COPY|RESET) for duration ms",
++        .cmd        = qnap_it8528_hmp_press,
++    },
++
++SRST
++``qnap_it8528_press`` *button* *duration*
++  Simulate a button press on the QNAP IT8528 EC.
++  *button* is one of ``CHASSIS``, ``COPY``, ``RESET``.
++  *duration* is the press duration in milliseconds.
++ERST
++

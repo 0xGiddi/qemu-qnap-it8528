@@ -1,0 +1,7 @@
+qemu/
+install/
+# Build stamps
+.done_*
+__pycahe__/
+*.bin
+*.swp

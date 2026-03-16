@@ -1,0 +1,12 @@
+--- a/include/monitor/hmp.h
++++ b/include/monitor/hmp.h
+@@ -16,7 +16,8 @@
+ 
+ #include "qemu/readline.h"
+ #include "qapi/qapi-types-common.h"
+-
++void qnap_it8528_hmp_info(Monitor *mon, const QDict *qdict);
++void qnap_it8528_hmp_press(Monitor *mon, const QDict *qdict);
+ bool hmp_handle_error(Monitor *mon, Error *err);
+ void hmp_help_cmd(Monitor *mon, const char *name);
+ strList *hmp_split_at_comma(const char *str);

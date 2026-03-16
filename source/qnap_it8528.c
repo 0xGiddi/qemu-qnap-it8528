@@ -16,7 +16,7 @@
 #include "qemu/error-report.h"
 #include "qapi/error.h"
 #include "hw/isa/isa.h"
-#include "hw/core/qdev-properties.h"   
+#include "hw/qdev-properties.h"   
 #include "qom/object.h"
 #include "monitor/monitor.h"
 #include "qobject/qdict.h"
@@ -477,7 +477,7 @@ static const Property qnap_it8528_properties[] = {
     DEFINE_PROP_UINT16("chip-id", QNAPIT8528State, sio_chip_id, QNAP_IT8528_DEFAULT_CHIP_ID),
 };
 
-static void qnap_it8528_class_init(ObjectClass *oc, const void *data) {
+static void qnap_it8528_class_init(ObjectClass *oc, void *data) {
     DeviceClass *dc = DEVICE_CLASS(oc);
     dc->realize = qnap_it8528_realize;
     dc->unrealize = qnap_it8528_unrealize;
