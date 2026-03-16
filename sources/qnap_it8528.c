@@ -58,7 +58,7 @@ typedef enum {
 
 OBJECT_DECLARE_SIMPLE_TYPE(QNAPIT8528State, QNAPIT8528)
 struct QNAPIT8528State {
-    ISADevice *parent_obj;
+    ISADevice parent_obj;
 
     MemoryRegion sio_io;
     uint8_t sio_index;
