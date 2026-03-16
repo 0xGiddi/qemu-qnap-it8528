@@ -129,6 +129,33 @@ static uint8_t qnap_it8528_read_register(QNAPIT8528State *s, uint16_t reg) {
     return s->regs[reg];
 }
 
+static bool it8528_fan_to_regs(unsigned int fan, uint16_t *rh, uint16_t *rl)
+{
+    if (fan <= 5) {
+        *rh = (fan + 0x312) * 2;
+        *rl = (fan * 2) + 0x625;
+        return true;
+    }
+    if (fan == 6 || fan == 7) {
+        *rh = (fan + 0x30a) * 2;
+        *rl = ((fan - 6) * 2) + 0x621;
+        return true;
+    }
+    if (fan == 0x0a) { *rh = 0x65b; *rl = 0x65a; return true; }
+    if (fan == 0x0b) { *rh = 0x65e; *rl = 0x65d; return true; }
+    if (fan >= 0x14 && fan <= 0x19) {
+        *rh = (fan + 0x30e) * 2;
+        *rl = ((fan - 0x14) * 2) + 0x645;
+        return true;
+    }
+    if (fan >= 0x1e && fan <= 0x23) {
+        *rh = (fan + 0x2f8) * 2;
+        *rl = ((fan - 0x1e) * 2) + 0x62d;
+        return true;
+    }
+    return false;
+}
+
 static void qnap_it8528_write_register(QNAPIT8528State *s, uint16_t reg, uint8_t val) {
     int vpd_table, vpd_reg_pos;
 
@@ -166,6 +193,32 @@ static void qnap_it8528_write_register(QNAPIT8528State *s, uint16_t reg, uint8_t
         case 0x159: s->led_disk_locate  &= ~BIT(val); break;
         case 0x15f: s->led_disk_active  |=  BIT(val); break;
         case 0x157: s->led_disk_active  &= ~BIT(val); break;
+        }
+    }
+
+    // Update all fan RPMs per bank PWM value
+    static const struct {
+        uint16_t pwm_reg;
+        uint8_t fans[6];
+        int nfans;
+    } banks[] = {
+        { 0x22e, {0,1,2,3,4,5}, 6 },
+        { 0x24b, {6,7}, 2 },
+        { 0x22f, {0x14,0x15,0x16,0x17,0x18,0x19}, 6 },
+        { 0x23b, {0x1e,0x1f,0x20,0x21,0x22,0x23}, 6 },
+    };
+
+    for (int i = 0; i < 4; i++) {
+        if (reg == banks[i].pwm_reg) {
+            uint16_t rpm = (uint16_t)(val * 5000 / 100);
+            for (int j = 0; j < banks[i].nfans; j++) {
+                uint16_t rh, rl;
+                if (it8528_fan_to_regs(banks[i].fans[j], &rh, &rl)) {
+                    s->regs[rh] = (rpm >> 8) & 0xff;
+                    s->regs[rl] = rpm & 0xff;
+                }
+            }
+            break;
         }
     }
 }
@@ -455,32 +508,6 @@ static uint16_t it8528_temp_sensor_to_reg(unsigned int sensor)
     return 0;
 }
 
-static bool it8528_fan_to_regs(unsigned int fan, uint16_t *rh, uint16_t *rl)
-{
-    if (fan <= 5) {
-        *rh = (fan + 0x312) * 2;
-        *rl = (fan * 2) + 0x625;
-        return true;
-    }
-    if (fan == 6 || fan == 7) {
-        *rh = (fan + 0x30a) * 2;
-        *rl = ((fan - 6) * 2) + 0x621;
-        return true;
-    }
-    if (fan == 0x0a) { *rh = 0x65b; *rl = 0x65a; return true; }
-    if (fan == 0x0b) { *rh = 0x65e; *rl = 0x65d; return true; }
-    if (fan >= 0x14 && fan <= 0x19) {
-        *rh = (fan + 0x30e) * 2;
-        *rl = ((fan - 0x14) * 2) + 0x645;
-        return true;
-    }
-    if (fan >= 0x1e && fan <= 0x23) {
-        *rh = (fan + 0x2f8) * 2;
-        *rl = ((fan - 0x1e) * 2) + 0x62d;
-        return true;
-    }
-    return false;
-}
 
 void qnap_it8528_hmp_info(Monitor *mon, const QDict *qdict) {
     static const char *phase_names[] = {"IDLE", "CMD_HIGH", "CMD_LOW", "WRITE_DATA"};

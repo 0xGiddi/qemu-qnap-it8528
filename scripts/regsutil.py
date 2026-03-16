@@ -162,8 +162,8 @@ def cmd_create(path, pairs):
     for off, _, _, default in SIMPLE_REGS:
         regs[off] = default
     # Fan defaults
-    set_fan_rpm(regs, 1, 554)
-    set_fan_rpm(regs, 7,  2221)
+    set_fan_rpm(regs, 0, 554)
+    set_fan_rpm(regs, 6,  2221)
     # Temperature defaults
     regs[temp_reg(0)]  = 30
     regs[temp_reg(5)]  = 35
