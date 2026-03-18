@@ -50,6 +50,13 @@ def fan_rpm_regs(fan):
     if 0x1e <= fan <= 0x23:   return (fan + 0x2f8) * 2,     ((fan - 0x1e) * 2) + 0x62d
     return None
 
+# Fan ID to status (reg, bit); bit=0 means present
+def fan_status_reg_bit(fan):
+    if fan <= 5:              return 0x242, fan
+    if fan in (6, 7):         return 0x244, fan - 6
+    if 0x14 <= fan <= 0x19:   return 0x259, fan - 0x14
+    if 0x1e <= fan <= 0x23:   return 0x25a, fan - 0x1e
+    return None
 
 # PWM 0-100 to RPM 0-5000 and vice versa
 def pwm_to_rpm(pwm): return round(pwm * 5000 / 100)
@@ -74,6 +81,13 @@ def set_fan_rpm(regs, fan_id, rpm):
         mode_reg, pwm_reg, _ = FAN_BANKS[bidx]
         regs[mode_reg] = 0x10
         regs[pwm_reg]  = rpm_to_pwm(rpm)
+
+def set_fan_status(regs, fan_id, present):
+    pair = fan_status_reg_bit(fan_id)
+    if not pair: return
+    reg, bit = pair
+    if present: regs[reg] &= ~(1 << bit)
+    else:       regs[reg] |=  (1 << bit)
 
 def set_pwm_bank(regs, bank_idx, pwm):
     pwm = max(0, min(100, pwm))
@@ -124,6 +138,10 @@ def apply_fields(regs, values):
         if name.startswith("fan") and name.endswith("_rpm"):
             set_fan_rpm(regs, int(name[3:-4], 0), val)
             continue
+        # fan<id>_status=<0|1> sets status bit (0=present, 1=absent)
+        if name.startswith("fan") and name.endswith("_status"):
+            set_fan_status(regs, int(name[3:-7], 0), val == 0)
+            continue
         print(f"WARNING: unknown field '{name}'")
 
 def parse_assignments(pairs):
@@ -162,6 +180,10 @@ def cmd_create(path, pairs):
     for off, _, _, default in SIMPLE_REGS:
         regs[off] = default
     # Fan defaults
+    regs[0x242] = 0x3e
+    regs[0x244] = 0x02
+    regs[0x259] = 0x3f
+    regs[0x25a] = 0x3f
     set_fan_rpm(regs, 0, 554)
     set_fan_rpm(regs, 6,  2221)
     # Temperature defaults
@@ -189,6 +211,7 @@ def main():
             "panel_bright=75        panel brightness 0-100 (writes A, B commit, C)\n"
             "fan_pwm_<0-3>=<0-100>  sets PWM (0-100) + mode reg + computes RPM for bank\n"
             "fan<id>_rpm=<rpm>      sets RPM regs and back-computes PWM for that bank\n"
+            "fan<id>_status=<0|1>   sets status bit (0=present, 1=absent)\n"
             "temp<id>=<celsius>     e.g. temp0=45  (valid IDs: 0,1,5-7,10,11,15-38)\n"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,

@@ -5,3 +5,5 @@ install/
 __pycahe__/
 *.bin
 *.swp
+*.qcow2
+*.img
