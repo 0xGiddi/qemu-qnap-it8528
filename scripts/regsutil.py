@@ -180,10 +180,8 @@ def cmd_create(path, pairs):
     for off, _, _, default in SIMPLE_REGS:
         regs[off] = default
     # Fan defaults
-    regs[0x242] = 0x3e
-    regs[0x244] = 0x02
-    regs[0x259] = 0x3f
-    regs[0x25a] = 0x3f
+    regs[0x242] = 0x01
+    regs[0x244] = 0x01
     set_fan_rpm(regs, 0, 554)
     set_fan_rpm(regs, 6,  2221)
     # Temperature defaults

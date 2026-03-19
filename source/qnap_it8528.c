@@ -8,6 +8,8 @@
  *
  * Version history:
  *  v1.0 - Initial version
+ *  v1.1 - Added register name sin logs
+ *  v1.2 - Added vmstate to allow save/load of VM, changed properties
  */
 
 #include "qemu/osdep.h"
@@ -20,6 +22,7 @@
 #include "qom/object.h"
 #include "monitor/monitor.h"
 #include "qobject/qdict.h"
+#include "migration/vmstate.h"
 #include "qnap_it8528.h"
 
 #define QNAP_IT8528_LOG_TAG        "QNAP-IT8528:"
@@ -45,7 +48,7 @@
 #define QNAP_IT8528_CMD_START       0x88
 #define QNAP_IT8528_CMD_WRITE_FLAG  0x8000
 
-#define QNAP_IT8528_REG_FILE_SIZE   0x700
+#define QNAP_IT8528_REG_FILE_SIZE   0x800
 #define QNAP_IT8528_VPD_NUM_TABLES  4
 #define QNAP_IT8528_VPD_TABLE_SIZE  512
 
@@ -153,6 +156,12 @@ static const struct QNAPIT8528RegInfo qnap_it8528_reg_info[] = {
     {0x30e, "FW_VERSION_6", "Firmware version byte 6" },
     {0x30f, "FW_VERSION_7", "Firmware version byte 7" },
     {0x320, "CPLD_VERSION", "CPLD version register"},
+    /* The following registers are not of interest but are given names so (null) names stand out */
+    {0x1c, "TEMP_CAL_XXX", ""},
+    {0x27d, "TEMP_CAL_XXX", ""},
+    {0x27f, "TEMP_CAL_YYY", ""},
+    {0x2e2, "TEMP_CAL_ZZZ", ""},
+    
     {0, NULL, NULL}
 };
 
@@ -600,15 +609,47 @@ static void qnap_it8528_unrealize(DeviceState *ds) {
 }
 
 static const Property qnap_it8528_properties[] = {
-    DEFINE_PROP_STRING("vpd-file", QNAPIT8528State, vpd_path),
-    DEFINE_PROP_STRING("regs-file", QNAPIT8528State, regs_path),
+    DEFINE_PROP_STRING("vpd", QNAPIT8528State, vpd_path),
+    DEFINE_PROP_STRING("regs", QNAPIT8528State, regs_path),
     DEFINE_PROP_UINT16("chip-id", QNAPIT8528State, sio_chip_id, QNAP_IT8528_DEFAULT_CHIP_ID),
+};
+
+static const VMStateDescription qnap_it8528_vmstate = {
+    .name = "qnap-it8528",
+    .version_id = 1,
+    .minimum_version_id = 1,
+    .fields = (const VMStateField[]) {
+        VMSTATE_UINT8(sio_index, QNAPIT8528State),
+        VMSTATE_UINT16(sio_chip_id, QNAPIT8528State),
+        /* Raw for enum, bypass typecheck */
+        {
+            .name       = "phase",
+            .version_id = 0,
+            .size       = sizeof(uint32_t),
+            .info       = &vmstate_info_uint32,
+            .offset     = offsetof(QNAPIT8528State, phase),
+        },
+        VMSTATE_UINT8(status, QNAPIT8528State),
+        VMSTATE_UINT8(output, QNAPIT8528State),
+        VMSTATE_UINT16(cmd, QNAPIT8528State),
+        VMSTATE_UINT8_ARRAY(regs, QNAPIT8528State, QNAP_IT8528_REG_FILE_SIZE),
+        VMSTATE_UINT8_2DARRAY(vpd_tables, QNAPIT8528State, QNAP_IT8528_VPD_NUM_TABLES, QNAP_IT8528_VPD_TABLE_SIZE),
+        VMSTATE_UINT16_ARRAY(vpd_offsets, QNAPIT8528State, QNAP_IT8528_VPD_NUM_TABLES),
+        VMSTATE_UINT32(led_disk_present, QNAPIT8528State),
+        VMSTATE_UINT32(led_disk_active, QNAPIT8528State),
+        VMSTATE_UINT32(led_disk_error, QNAPIT8528State),
+        VMSTATE_UINT32(led_disk_locate, QNAPIT8528State),
+        VMSTATE_UINT8(buttons, QNAPIT8528State),
+        VMSTATE_TIMER_PTR(button_timer, QNAPIT8528State),
+        VMSTATE_END_OF_LIST()
+    }
 };
 
 static void qnap_it8528_class_init(ObjectClass *oc, const void *data) {
     DeviceClass *dc = DEVICE_CLASS(oc);
     dc->realize = qnap_it8528_realize;
     dc->unrealize = qnap_it8528_unrealize;
+    dc->vmsd      = &qnap_it8528_vmstate;
     dc->desc = "QNAP IT8528 Embedded Controller";
     device_class_set_props(dc, qnap_it8528_properties);
     set_bit(DEVICE_CATEGORY_MISC, dc->categories);
