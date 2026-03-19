@@ -1,4 +1,4 @@
-QEMU_VERSION ?= v10.0.0
+QEMU_VERSION ?= v10.2.2
 QEMU_REPO := https://gitlab.com/qemu-project/qemu.git
 QEMU_DIR := qemu
 BUILD_DIR := $(QEMU_DIR)/build

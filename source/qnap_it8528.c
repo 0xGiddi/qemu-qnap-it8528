@@ -86,7 +86,6 @@ struct QNAPIT8528State {
     uint8_t buttons;
 };
 
-
 static const uint16_t vpd_regs[QNAP_IT8528_VPD_NUM_TABLES][3] = {
     {0x56, 0x57, 0x58},
     {0x59, 0x5a, 0x5b},
@@ -94,40 +93,71 @@ static const uint16_t vpd_regs[QNAP_IT8528_VPD_NUM_TABLES][3] = {
     {0x60, 0x61, 0x62}
 };
 
+struct QNAPIT8528RegInfo {
+    uint16_t reg;
+    const char *name;
+    const char *desc;
+};
+
+static const struct QNAPIT8528RegInfo qnap_it8528_reg_info[] = {
+    {0x16, "PWR_RECOVERY", "AC power recovery mode"},
+    {0x56, "VPD_T0_OFFS_H", "VPD table 0 offset high byte"},
+    {0x57, "VPD_T0_OFFS_L", "VPD table 0 offset low byte"},
+    {0x58, "VPD_T0_DATA", "VPD table 0 data read"},
+    {0x59, "VPD_T1_OFFS_H", "VPD table 1 offset high byte"},
+    {0x5a, "VPD_T1_OFFS_L", "VPD table 1 offset low byte"},
+    {0x5b, "VPD_T1_DATA", "VPD table 1 data read"},
+    {0x5c, "VPD_T2_OFFS_H", "VPD table 2 offset high byte"},
+    {0x5d, "VPD_T2_OFFS_L", "VPD table 2 offset low byte"},
+    {0x5e, "VPD_T2_DATA", "VPD table 2 data read"},
+    {0x60, "VPD_T3_OFFS_H", "VPD table 3 offset high byte"},
+    {0x61, "VPD_T3_OFFS_L", "VPD table 3 offset low byte"},
+    {0x62, "VPD_T3_DATA", "VPD table 3 data read"},
+    {0x101, "EUP_SUPPORT", "EuP support flags"},
+    {0x121, "EUP_MODE", "EuP mode settings"},
+    {0x143, "BUTTON_INPUT", "Button state"},
+    {0x154, "LED_USB", "USB LED"},
+    {0x155, "LED_STATUS", "STATUS LED"},
+    {0x156, "LED_JBOD", "JBOD LED"},
+    {0x157, "LED_DISK_ACT_OFF", "Disk activity LED off"},
+    {0x158, "LED_DISK_LOC_ON", "Disk locate LED on"},
+    {0x159, "LED_DISK_LOC_OFF", "Disk locate LED off"},
+    {0x15a, "LED_DISK_PRES_ON", "Disk present LED on"},
+    {0x15b, "LED_DISK_PRES_OFF", "Disk present LED off"},
+    {0x15c, "LED_DISK_ERR_ON", "Disk error LED on"},
+    {0x15d, "LED_DISK_ERR_OFF", "Disk error LED off"},
+    {0x15e, "LED_IDENT", "Enclosure identify LED"},
+    {0x15f, "LED_DISK_ACT_ON", "Disk activity LED on"},
+    {0x167, "LED_10G", "10GbE LED"},
+    {0x220, "FAN_PWM_MODE_BANK_0", "Fan PWM mode bank 0"},
+    {0x221, "FAN_PWM_MODE_BANK_2", "Fan PWM mode bank 2"},
+    {0x222, "FAN_PWM_MODE_BANK_3", "Fan PWM mode bank 3"},
+    {0x223, "FAN_PWM_MODE_BANK_1", "Fan PWM mode bank 1"},
+    {0x22e, "FAN_PWM_VAL_BANK_0", "Fan PWM value bank 0"},
+    {0x22f, "FAN_PWM_VAL_BANK_2", "Fan PWM value bank 2"},
+    {0x23b, "FAN_PWM_VAL_BANK_3", "Fan PWM value bank 3"},
+    {0x24b, "FAN_PWM_VAL_BANK_1", "Fan PWM value bank 1"},
+    {0x242, "FAN_STATUS_BANK_0", "Fan status bank 0 (fans 0-5)"},
+    {0x243, "PANEL_BRIGHT_A", "Panel brightness value A"},
+    {0x244, "FAN_STATUS_BANK_1", "Fan status bank 1 (fans 6-7)"},
+    {0x245, "PANEL_BRIGHT_B", "Panel brightness control register"},
+    {0x246, "PANEL_BRIGHT_C", "Panel brightness value C"},
+    {0x259, "FAN_STATUS_BANK_2", "Fan status bank 2 (fans 20-25)"},
+    {0x25a, "FAN_STATUS_BANK_3", "Fan status bank 3 (fans 30-35)"},
+    {0x308, "FW_VERSION_0", "Firmware version byte 0" },
+    {0x309, "FW_VERSION_1", "Firmware version byte 1" },
+    {0x30a, "FW_VERSION_2", "Firmware version byte 2" },
+    {0x30b, "FW_VERSION_3", "Firmware version byte 3" },
+    {0x30c, "FW_VERSION_4", "Firmware version byte 4" },
+    {0x30d, "FW_VERSION_5", "Firmware version byte 5" },
+    {0x30e, "FW_VERSION_6", "Firmware version byte 6" },
+    {0x30f, "FW_VERSION_7", "Firmware version byte 7" },
+    {0x320, "CPLD_VERSION", "CPLD version register"},
+    {0, NULL, NULL}
+};
+
 static QNAPIT8528State *qnap_it8528_global;
 
-static int qnap_it8528_vpd_reg_lookup(uint16_t reg, int *position) {
-    int i, j;
-
-    for (i = 0; i < QNAP_IT8528_VPD_NUM_TABLES; i++) {
-        for (j = 0; j < 3; j++) {
-            if (vpd_regs[i][j] == reg) {
-                *position = j;
-                return i;
-            }
-        }
-    }
-    return -1;
-}
-
-static uint8_t qnap_it8528_read_register(QNAPIT8528State *s, uint16_t reg) {
-    int vpd_table, vpd_reg_pos;
-    if (reg >= QNAP_IT8528_REG_FILE_SIZE) {
-        QNAP_IT8528_WARN("Read from out of range reg 0x%04x", reg);
-        return 0;
-    }
-
-    vpd_table = qnap_it8528_vpd_reg_lookup(reg, &vpd_reg_pos);
-    if (vpd_table >= 0 && vpd_reg_pos == 2) {
-        if (s->vpd_offsets[vpd_table] >= QNAP_IT8528_VPD_TABLE_SIZE) {
-            QNAP_IT8528_WARN("VPD read from out of range offset table=%d offs=0x%04x", vpd_table, s->vpd_offsets[vpd_table]);;
-            return 0;
-        }
-        return s->vpd_tables[vpd_table][s->vpd_offsets[vpd_table]];
-    }
-
-    return s->regs[reg];
-}
 
 static bool it8528_fan_to_regs(unsigned int fan, uint16_t *rh, uint16_t *rl)
 {
@@ -156,6 +186,104 @@ static bool it8528_fan_to_regs(unsigned int fan, uint16_t *rh, uint16_t *rl)
     return false;
 }
 
+static const char *qnap_it8528_reg_name(uint16_t reg)
+{
+    static char dynamic_name[32];
+    int i;
+
+    /* Check static table first */
+    for (i = 0; qnap_it8528_reg_info[i].name; i++) {
+        if (qnap_it8528_reg_info[i].reg == reg) {
+            return qnap_it8528_reg_info[i].name;
+        }
+    }
+
+    /* Temperature sensor registers */
+    static const struct { uint16_t reg; int sensor; } temp_map[] = {
+        {0x600, 0}, {0x601, 1},
+        {0x602, 5}, {0x603, 6}, {0x604, 7},
+        {0x659, 0x0a}, {0x65c, 0x0b},
+    };
+    for (i = 0; i < (int)ARRAY_SIZE(temp_map); i++) {
+        if (temp_map[i].reg == reg) {
+            snprintf(dynamic_name, sizeof(dynamic_name),
+                     "TEMP_SENSOR_%d", temp_map[i].sensor);
+            return dynamic_name;
+        }
+    }
+
+    if (reg >= 0x606 && reg <= 0x61d) {
+        int sensor = reg - 0x5f7;   /* inverse of 0x5f7 + sensor */
+        if (sensor >= 0x0f && sensor <= 0x26) {
+            snprintf(dynamic_name, sizeof(dynamic_name),
+                     "TEMP_SENSOR_%d", sensor);
+            return dynamic_name;
+        }
+    }
+
+    /* Fan RPM register (high and lo) */
+    static const struct { int fan; } fan_list[] = {
+        {0},{1},{2},{3},{4},{5},
+        {6},{7},
+        {0x0a},{0x0b},
+        {0x14},{0x15},{0x16},{0x17},{0x18},{0x19},
+        {0x1e},{0x1f},{0x20},{0x21},{0x22},{0x23},
+    };
+    for (i = 0; i < (int)ARRAY_SIZE(fan_list); i++) {
+        uint16_t rh, rl;
+        if (it8528_fan_to_regs(fan_list[i].fan, &rh, &rl)) {
+            if (reg == rh) {
+                snprintf(dynamic_name, sizeof(dynamic_name),
+                         "FAN%d_RPM_H", fan_list[i].fan);
+                return dynamic_name;
+            }
+            if (reg == rl) {
+                snprintf(dynamic_name, sizeof(dynamic_name),
+                         "FAN%d_RPM_L", fan_list[i].fan);
+                return dynamic_name;
+            }
+        }
+    }
+
+    return NULL;
+}
+
+static int qnap_it8528_vpd_reg_lookup(uint16_t reg, int *position) {
+    int i, j;
+
+    for (i = 0; i < QNAP_IT8528_VPD_NUM_TABLES; i++) {
+        for (j = 0; j < 3; j++) {
+            if (vpd_regs[i][j] == reg) {
+                *position = j;
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
+static uint8_t qnap_it8528_read_register(QNAPIT8528State *s, uint16_t reg) {
+    int vpd_table, vpd_reg_pos;
+    if (reg >= QNAP_IT8528_REG_FILE_SIZE) {
+        QNAP_IT8528_WARN("Read from out of range reg 0x%04x", reg);
+        return 0;
+    }
+
+    QNAP_IT8528_LOG("Read %s (reg=0x%04x val=%02x)", qnap_it8528_reg_name(reg), reg, s->regs[reg]);
+
+    vpd_table = qnap_it8528_vpd_reg_lookup(reg, &vpd_reg_pos);
+    if (vpd_table >= 0 && vpd_reg_pos == 2) {
+        if (s->vpd_offsets[vpd_table] >= QNAP_IT8528_VPD_TABLE_SIZE) {
+            QNAP_IT8528_WARN("VPD read from out of range offset table=%d offs=0x%04x", vpd_table, s->vpd_offsets[vpd_table]);;
+            return 0;
+        }
+        return s->vpd_tables[vpd_table][s->vpd_offsets[vpd_table]];
+    }
+
+    return s->regs[reg];
+}
+
+
 static void qnap_it8528_write_register(QNAPIT8528State *s, uint16_t reg, uint8_t val) {
     int vpd_table, vpd_reg_pos;
 
@@ -164,7 +292,7 @@ static void qnap_it8528_write_register(QNAPIT8528State *s, uint16_t reg, uint8_t
         return;
     }
 
-    QNAP_IT8528_LOG("Write reg=0x%04x val=%02x", reg, val);
+    QNAP_IT8528_LOG("Write %s (reg=0x%04x val=%02x)", qnap_it8528_reg_name(reg), reg, val);
 
     vpd_table = qnap_it8528_vpd_reg_lookup(reg, &vpd_reg_pos);
     if (vpd_table >= 0) {
@@ -477,7 +605,7 @@ static const Property qnap_it8528_properties[] = {
     DEFINE_PROP_UINT16("chip-id", QNAPIT8528State, sio_chip_id, QNAP_IT8528_DEFAULT_CHIP_ID),
 };
 
-static void qnap_it8528_class_init(ObjectClass *oc, void *data) {
+static void qnap_it8528_class_init(ObjectClass *oc, const void *data) {
     DeviceClass *dc = DEVICE_CLASS(oc);
     dc->realize = qnap_it8528_realize;
     dc->unrealize = qnap_it8528_unrealize;
