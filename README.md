@@ -137,12 +137,12 @@ output. Internally they are stored as minutes elapsed since 2013-01-01 00:00 UTC
 matching the format used by the real EC firmware.
 
 ## Using The Device
-Use QEMU as you would normally and just add `-device qnap-it8528` to add an empty (no register state, no VPD) QNAP IT8528 EC to the VM. To emulate an EC with proper data and register information, use the following properties to pass the register space and VPD backing files created with `vpdutil.py` and `regsutil.py`, for example `-device qnap-it8528,regs-file=regs.bin,vpd-file=vpd.bin`.
+Use QEMU as you would normally and just add `-device qnap-it8528` to add an empty (no register state, no VPD) QNAP IT8528 EC to the VM. To emulate an EC with proper data and register information, use the following properties to pass the register space and VPD backing files created with `vpdutil.py` and `regsutil.py`, for example `-device qnap-it8528,regs=regs.bin,vpd=vpd.bin`.
 
 | Property | Description | Default |
 |---|---|---|
-| `regs-file` | Path to binary register state file | (empty, all zero) |
-| `vpd-file` | Path to binary VPD tables file | (empty, all zero) |
+| `regs` | Path to binary register state file | (empty, all zero) |
+| `vpd` | Path to binary VPD tables file | (empty, all zero) |
 | `chip-id` | SuperIO chip ID reported at 0x2e/0x2f | `0x8528` |
 
 ### Monitor commands
